@@ -10,8 +10,10 @@
     button { padding: 12px 18px; margin: 6px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; transition: 0.2s; }
     .note-btn { background: #444; color: white; }
     .note-btn:hover { background: #666; }
+    #start-btn { background: #2ecc71; color: white; font-weight: bold; width: 100%; font-size: 20px; }
     #leaderboard { margin-top: 30px; text-align: left; background: #333; padding: 15px; border-radius: 10px; }
     .score-entry { display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding: 5px 0; }
+    #timer-display { color: #e74c3c; font-size: 24px; font-weight: bold; margin: 10px 0; }
   </style>
 </head>
 <body>
@@ -19,10 +21,15 @@
 <div class="container">
   <h2>🎸 Guitar Note Quiz</h2>
   <p id="player-display">Playing as: <strong id="current-username">...</strong></p>
-  <p id="question">Loading...</p>
-  <div id="buttons"></div>
-  <p id="result"></p>
-  <h3>Your Score: <span id="score">0</span></h3>
+
+  <div id="game-area">
+    <button id="start-btn">▶ START 60s CHALLENGE</button>
+    <div id="timer-display" style="display: none;">Time: 60s</div>
+    <p id="question">Click Start to Play!</p>
+    <div id="buttons"></div>
+    <p id="result"></p>
+    <h3>Score: <span id="score">0</span></h3>
+  </div>
 
   <div id="leaderboard">
     <h3>🏆 Leaderboard</h3>
@@ -33,7 +40,6 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-
   // TODO: REPLACE THIS WITH YOUR FIREBASE CONFIG
   const firebaseConfig = {
     apiKey: "AIzaSyAraI903rrG8ADWJ47Ew8mn_HDX6yJ_mgw",
@@ -49,67 +55,82 @@
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
 
-  // ... keep your Firebase initialization code here ...
+  // --- Variables ---
+  const strings = [{num:1, note:"E"}, {num:2, note:"B"}, {num:3, note:"G"}, {num:4, note:"D"}, {num:5, note:"A"}, {num:6, note:"E"}];
+  const notes = ["A","A#","B","C","C#","D","D#","E","F","F#","G","G#"];
+  let score = 0;
+  let correctNote = "";
+  let timeLeft = 60;
+  let timerActive = false;
+  let gameInterval;
 
-    let score = 0;
-    let timeLeft = 60;
-    let timerActive = false;
-    let gameInterval;
+  // Prompt for Name
+  let playerName = localStorage.getItem("guitarPlayer") || prompt("Enter your name:") || "Player";
+  localStorage.setItem("guitarPlayer", playerName);
+  document.getElementById("current-username").textContent = playerName;
 
-    const startBtn = document.getElementById("start-btn");
-    const timerDisplay = document.getElementById("timer-display");
+  const startBtn = document.getElementById("start-btn");
+  const timerDisplay = document.getElementById("timer-display");
+  const questionEl = document.getElementById("question");
+  const buttonsEl = document.getElementById("buttons");
 
-    function startGame() {
+  // --- Game Functions ---
+  function newQuestion() {
+    const string = strings[Math.floor(Math.random() * 6)];
+    const fret = Math.floor(Math.random() * 12);
+    correctNote = notes[(notes.indexOf(string.note) + fret) % 12];
+    questionEl.textContent = `What is string ${string.num}, fret ${fret}?`;
+
+    buttonsEl.innerHTML = "";
+    notes.forEach(n => {
+      const b = document.createElement("button");
+      b.textContent = n;
+      b.className = "note-btn";
+      b.onclick = () => checkAnswer(n);
+      buttonsEl.appendChild(b);
+    });
+  }
+
+  function checkAnswer(answer) {
+    if (!timerActive) return;
+    if (answer === correctNote) {
+      score++;
+      document.getElementById("result").textContent = "✅ Correct!";
+    } else {
+      document.getElementById("result").textContent = `❌ Wrong: ${correctNote}`;
+    }
+    document.getElementById("score").textContent = score;
+    newQuestion();
+  }
+
+  function startGame() {
     score = 0;
     timeLeft = 60;
     timerActive = true;
     document.getElementById("score").textContent = "0";
+    document.getElementById("result").textContent = "";
     startBtn.style.display = "none";
     timerDisplay.style.display = "block";
-
-    newQuestion(); // Show first question
+    newQuestion();
 
     gameInterval = setInterval(() => {
-        timeLeft--;
-        timerDisplay.textContent = `Time: ${timeLeft}s`;
-
-        if (timeLeft <= 0) {
-        endGame();
-        }
+      timeLeft--;
+      timerDisplay.textContent = `Time: ${timeLeft}s`;
+      if (timeLeft <= 0) endGame();
     }, 1000);
-    }
+  }
 
-    function endGame() {
+  function endGame() {
     clearInterval(gameInterval);
     timerActive = false;
     timerDisplay.style.display = "none";
-    startBtn.style.display = "inline-block";
-    startBtn.textContent = "RETRY 🔄";
-
-    document.getElementById("question").textContent = "Time's Up! 🏁";
-    document.getElementById("buttons").innerHTML = "";
-
-    // FINAL SCORE SAVE
+    startBtn.style.display = "block";
+    startBtn.textContent = "RETRY CHALLENGE 🔄";
+    questionEl.textContent = "Time's Up! 🏁";
+    buttonsEl.innerHTML = "";
     updateScoreInDB();
-    alert(`Game Over! You scored ${score} points.`);
-    }
+  }
 
-    // Update your checkAnswer logic to only work if timerActive is true
-    function checkAnswer(answer) {
-    if (!timerActive) return;
-
-    if (answer === correctNote) {
-        score++;
-        document.getElementById("result").textContent = "✅ Correct!";
-    } else {
-        document.getElementById("result").textContent = `❌ Wrong: ${correctNote}`;
-    }
-    document.getElementById("score").textContent = score;
-    newQuestion();
-    }
-
-    startBtn.onclick = startGame;
-  // --- Database Logic ---
   function updateScoreInDB() {
     set(ref(db, 'scores/' + playerName), {
       username: playerName,
@@ -117,20 +138,18 @@
     });
   }
 
-  // Listen for Leaderboard updates
+  // --- Leaderboard Sync ---
   onValue(ref(db, 'scores'), (snapshot) => {
     const data = snapshot.val();
     const scoreList = document.getElementById("score-list");
     scoreList.innerHTML = "";
-
-    // Sort and display
     const sorted = Object.values(data || {}).sort((a, b) => b.score - a.score);
     sorted.forEach(entry => {
       scoreList.innerHTML += `<div class="score-entry"><span>${entry.username}</span> <strong>${entry.score}</strong></div>`;
     });
   });
 
-  newQuestion();
+  startBtn.onclick = startGame;
 </script>
 </body>
 </html>
