@@ -49,42 +49,66 @@
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
 
-  // --- Game Logic ---
-  const strings = [{num:1, note:"E"}, {num:2, note:"B"}, {num:3, note:"G"}, {num:4, note:"D"}, {num:5, note:"A"}, {num:6, note:"E"}];
-  const notes = ["A","A#","B","C","C#","D","D#","E","F","F#","G","G#"];
-  let score = 0;
-  let correctNote = "";
-  let playerName = localStorage.getItem("guitarPlayer") || prompt("Enter your name for the leaderboard:") || "Anonymous";
+  // ... keep your Firebase initialization code here ...
 
-  localStorage.setItem("guitarPlayer", playerName);
-  document.getElementById("current-username").textContent = playerName;
+    let score = 0;
+    let timeLeft = 60;
+    let timerActive = false;
+    let gameInterval;
 
-  function newQuestion() {
-    const string = strings[Math.floor(Math.random() * 6)];
-    const fret = Math.floor(Math.random() * 12);
-    correctNote = notes[(notes.indexOf(string.note) + fret) % 12];
-    document.getElementById("question").textContent = `What is string ${string.num}, fret ${fret}?`;
+    const startBtn = document.getElementById("start-btn");
+    const timerDisplay = document.getElementById("timer-display");
 
-    const btns = document.getElementById("buttons");
-    btns.innerHTML = "";
-    notes.forEach(n => {
-      const b = document.createElement("button");
-      b.textContent = n; b.className = "note-btn";
-      b.onclick = () => {
-        if(n === correctNote) {
-           score++;
-           updateScoreInDB();
-           document.getElementById("result").textContent = "✅ Correct!";
-        } else {
-           document.getElementById("result").textContent = `❌ Wrong! It was ${correctNote}`;
+    function startGame() {
+    score = 0;
+    timeLeft = 60;
+    timerActive = true;
+    document.getElementById("score").textContent = "0";
+    startBtn.style.display = "none";
+    timerDisplay.style.display = "block";
+
+    newQuestion(); // Show first question
+
+    gameInterval = setInterval(() => {
+        timeLeft--;
+        timerDisplay.textContent = `Time: ${timeLeft}s`;
+
+        if (timeLeft <= 0) {
+        endGame();
         }
-        document.getElementById("score").textContent = score;
-        setTimeout(newQuestion, 800);
-      };
-      btns.appendChild(b);
-    });
-  }
+    }, 1000);
+    }
 
+    function endGame() {
+    clearInterval(gameInterval);
+    timerActive = false;
+    timerDisplay.style.display = "none";
+    startBtn.style.display = "inline-block";
+    startBtn.textContent = "RETRY 🔄";
+
+    document.getElementById("question").textContent = "Time's Up! 🏁";
+    document.getElementById("buttons").innerHTML = "";
+
+    // FINAL SCORE SAVE
+    updateScoreInDB();
+    alert(`Game Over! You scored ${score} points.`);
+    }
+
+    // Update your checkAnswer logic to only work if timerActive is true
+    function checkAnswer(answer) {
+    if (!timerActive) return;
+
+    if (answer === correctNote) {
+        score++;
+        document.getElementById("result").textContent = "✅ Correct!";
+    } else {
+        document.getElementById("result").textContent = `❌ Wrong: ${correctNote}`;
+    }
+    document.getElementById("score").textContent = score;
+    newQuestion();
+    }
+
+    startBtn.onclick = startGame;
   // --- Database Logic ---
   function updateScoreInDB() {
     set(ref(db, 'scores/' + playerName), {
