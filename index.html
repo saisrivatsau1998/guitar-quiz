@@ -5,34 +5,57 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Global Guitar Fret Quiz</title>
   <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #fff; text-align: center; padding: 20px; }
+    body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: #fff; text-align: center; padding: 10px; }
     .container { max-width: 600px; margin: auto; background: #2c2c2c; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-    button { padding: 12px 18px; margin: 6px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; transition: 0.2s; }
-    .note-btn { background: #444; color: white; }
+
+    /* Fretboard Styling */
+    .fretboard { position: relative; width: 100%; height: 160px; background: #3d2b1f; margin: 20px 0; border-radius: 5px; border: 2px solid #5d4037; overflow: hidden; }
+    .string { position: absolute; width: 100%; height: 2px; background: #ddd; z-index: 1; }
+    .fret { position: absolute; width: 2px; height: 100%; background: #999; z-index: 2; }
+    .marker { position: absolute; width: 18px; height: 18px; background: #e74c3c; border-radius: 50%; z-index: 3; transform: translate(-50%, -50%); display: none; box-shadow: 0 0 10px #e74c3c; }
+
+    button { padding: 12px 18px; margin: 5px; font-size: 15px; border-radius: 8px; border: none; cursor: pointer; transition: 0.2s; }
+    .note-btn { background: #444; color: white; width: 60px; }
     .note-btn:hover { background: #666; }
-    #start-btn { background: #2ecc71; color: white; font-weight: bold; width: 100%; font-size: 20px; }
+    #start-btn { background: #2ecc71; color: white; font-weight: bold; width: 100%; font-size: 18px; margin-top: 10px; }
+    select { padding: 10px; border-radius: 8px; background: #444; color: white; border: none; font-size: 16px; width: 100%; }
+
     #leaderboard { margin-top: 30px; text-align: left; background: #333; padding: 15px; border-radius: 10px; }
-    .score-entry { display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding: 5px 0; }
+    .score-entry { display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding: 8px 0; font-size: 14px; }
     #timer-display { color: #e74c3c; font-size: 24px; font-weight: bold; margin: 10px 0; }
   </style>
 </head>
 <body>
 
 <div class="container">
-  <h2>🎸 Guitar Note Quiz</h2>
-  <p id="player-display">Playing as: <strong id="current-username">...</strong></p>
+  <h2>🎸 Guitar Note Master</h2>
+  <p id="player-display">👤 <strong id="current-username">...</strong></p>
 
-  <div id="game-area">
-    <button id="start-btn">▶ START 60s CHALLENGE</button>
-    <div id="timer-display" style="display: none;">Time: 60s</div>
-    <p id="question">Click Start to Play!</p>
+  <div id="setup-area">
+    <label>Choose Duration:</label>
+    <select id="duration-select">
+      <option value="30">30 Seconds (Blitz)</option>
+      <option value="60" selected>60 Seconds (Standard)</option>
+      <option value="120">120 Seconds (Endurance)</option>
+    </select>
+    <button id="start-btn">▶ START CHALLENGE</button>
+  </div>
+
+  <div id="game-area" style="display:none;">
+    <div id="timer-display">Time: 60s</div>
+
+    <div class="fretboard" id="fretboard">
+        <div id="target-marker" class="marker"></div>
+    </div>
+
+    <p id="question" style="font-weight: bold; font-size: 1.2em;"></p>
     <div id="buttons"></div>
-    <p id="result"></p>
-    <h3>Score: <span id="score">0</span></h3>
+    <p id="result" style="height: 20px;"></p>
+    <h3>Score: <span id="score-val">0</span></h3>
   </div>
 
   <div id="leaderboard">
-    <h3>🏆 Leaderboard</h3>
+    <h3>🏆 Global Leaderboard</h3>
     <div id="score-list">Loading scores...</div>
   </div>
 </div>
@@ -52,70 +75,85 @@
     measurementId: "G-5SFKECVMCX"
     };
 
-  const app = initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
 
-  // --- Variables ---
-  const strings = [{num:1, note:"E"}, {num:2, note:"B"}, {num:3, note:"G"}, {num:4, note:"D"}, {num:5, note:"A"}, {num:6, note:"E"}];
-  const notes = ["A","A#","B","C","C#","D","D#","E","F","F#","G","G#"];
-  let score = 0;
-  let correctNote = "";
-  let timeLeft = 60;
-  let timerActive = false;
-  let gameInterval;
+  // --- UI Setup ---
+  const board = document.getElementById('fretboard');
+  // Create 6 strings
+  for(let i=0; i<6; i++) {
+      let s = document.createElement('div');
+      s.className = 'string';
+      s.style.top = `${15 + (i * 26)}px`;
+      board.appendChild(s);
+  }
+  // Create 13 frets (0 to 12)
+  for(let i=0; i<=12; i++) {
+      let f = document.createElement('div');
+      f.className = 'fret';
+      f.style.left = `${(i * 8.33)}%`;
+      board.appendChild(f);
+  }
 
-  // Prompt for Name
+  // --- Logic ---
+  const strings = [{n:1, note:"E"}, {n:2, note:"B"}, {n:3, note:"G"}, {n:4, note:"D"}, {n:5, note:"A"}, {n:6, note:"E"}];
+  const notes = ["A","A#","B","C","C#","D","D#","E","F","F#","G","G#"];
+  let score = 0, timeLeft = 60, timerActive = false, gameInterval, chosenLimit = 60;
+  let correctNote = "";
+
   let playerName = localStorage.getItem("guitarPlayer") || prompt("Enter your name:") || "Player";
   localStorage.setItem("guitarPlayer", playerName);
   document.getElementById("current-username").textContent = playerName;
 
+  const setupArea = document.getElementById('setup-area');
+  const gameArea = document.getElementById('game-area');
   const startBtn = document.getElementById("start-btn");
-  const timerDisplay = document.getElementById("timer-display");
-  const questionEl = document.getElementById("question");
-  const buttonsEl = document.getElementById("buttons");
+  const marker = document.getElementById('target-marker');
 
-  // --- Game Functions ---
   function newQuestion() {
-    const string = strings[Math.floor(Math.random() * 6)];
-    const fret = Math.floor(Math.random() * 12);
+    const sIdx = Math.floor(Math.random() * 6);
+    const fret = Math.floor(Math.random() * 13);
+    const string = strings[sIdx];
     correctNote = notes[(notes.indexOf(string.note) + fret) % 12];
-    questionEl.textContent = `What is string ${string.num}, fret ${fret}?`;
 
-    buttonsEl.innerHTML = "";
+    document.getElementById("question").textContent = `Identify: String ${string.n}, Fret ${fret}`;
+
+    // Move visual marker
+    marker.style.display = "block";
+    marker.style.top = `${15 + (sIdx * 26)}px`;
+    marker.style.left = fret === 0 ? "2%" : `${(fret * 8.33) - 4}%`;
+
+    const btns = document.getElementById("buttons");
+    btns.innerHTML = "";
     notes.forEach(n => {
       const b = document.createElement("button");
-      b.textContent = n;
-      b.className = "note-btn";
-      b.onclick = () => checkAnswer(n);
-      buttonsEl.appendChild(b);
+      b.textContent = n; b.className = "note-btn";
+      b.onclick = () => {
+          if(!timerActive) return;
+          if(n === correctNote) {
+              score++;
+              document.getElementById("result").innerHTML = "<span style='color:#2ecc71'>✔ Perfect!</span>";
+          } else {
+              document.getElementById("result").innerHTML = `<span style='color:#e74c3c'>✘ It was ${correctNote}</span>`;
+          }
+          document.getElementById("score-val").textContent = score;
+          newQuestion();
+      };
+      btns.appendChild(b);
     });
   }
 
-  function checkAnswer(answer) {
-    if (!timerActive) return;
-    if (answer === correctNote) {
-      score++;
-      document.getElementById("result").textContent = "✅ Correct!";
-    } else {
-      document.getElementById("result").textContent = `❌ Wrong: ${correctNote}`;
-    }
-    document.getElementById("score").textContent = score;
-    newQuestion();
-  }
-
   function startGame() {
-    score = 0;
-    timeLeft = 60;
-    timerActive = true;
-    document.getElementById("score").textContent = "0";
-    document.getElementById("result").textContent = "";
-    startBtn.style.display = "none";
-    timerDisplay.style.display = "block";
+    chosenLimit = document.getElementById('duration-select').value;
+    score = 0; timeLeft = chosenLimit; timerActive = true;
+    setupArea.style.display = "none";
+    gameArea.style.display = "block";
+    document.getElementById("score-val").textContent = "0";
     newQuestion();
 
     gameInterval = setInterval(() => {
       timeLeft--;
-      timerDisplay.textContent = `Time: ${timeLeft}s`;
+      document.getElementById("timer-display").textContent = `Time: ${timeLeft}s`;
       if (timeLeft <= 0) endGame();
     }, 1000);
   }
@@ -123,29 +161,32 @@
   function endGame() {
     clearInterval(gameInterval);
     timerActive = false;
-    timerDisplay.style.display = "none";
-    startBtn.style.display = "block";
-    startBtn.textContent = "RETRY CHALLENGE 🔄";
-    questionEl.textContent = "Time's Up! 🏁";
-    buttonsEl.innerHTML = "";
+    alert(`Time's up! Final Score: ${score}`);
     updateScoreInDB();
+    gameArea.style.display = "none";
+    setupArea.style.display = "block";
+    startBtn.textContent = "TRY AGAIN 🔄";
   }
 
   function updateScoreInDB() {
     set(ref(db, 'scores/' + playerName), {
       username: playerName,
-      score: score
+      score: score,
+      mode: chosenLimit + "s"
     });
   }
 
-  // --- Leaderboard Sync ---
   onValue(ref(db, 'scores'), (snapshot) => {
     const data = snapshot.val();
     const scoreList = document.getElementById("score-list");
     scoreList.innerHTML = "";
     const sorted = Object.values(data || {}).sort((a, b) => b.score - a.score);
-    sorted.forEach(entry => {
-      scoreList.innerHTML += `<div class="score-entry"><span>${entry.username}</span> <strong>${entry.score}</strong></div>`;
+    sorted.slice(0, 10).forEach(entry => {
+      scoreList.innerHTML += `
+        <div class="score-entry">
+            <span><strong>${entry.username}</strong> (${entry.mode || '60s'})</span>
+            <strong style="color:#2ecc71">${entry.score} pts</strong>
+        </div>`;
     });
   });
 
