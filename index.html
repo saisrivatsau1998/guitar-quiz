@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Global Guitar Fret Quiz</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #fff; text-align: center; padding: 20px; }
+    .container { max-width: 600px; margin: auto; background: #2c2c2c; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    button { padding: 12px 18px; margin: 6px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; transition: 0.2s; }
+    .note-btn { background: #444; color: white; }
+    .note-btn:hover { background: #666; }
+    #leaderboard { margin-top: 30px; text-align: left; background: #333; padding: 15px; border-radius: 10px; }
+    .score-entry { display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding: 5px 0; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>🎸 Guitar Note Quiz</h2>
+  <p id="player-display">Playing as: <strong id="current-username">...</strong></p>
+  <p id="question">Loading...</p>
+  <div id="buttons"></div>
+  <p id="result"></p>
+  <h3>Your Score: <span id="score">0</span></h3>
+
+  <div id="leaderboard">
+    <h3>🏆 Leaderboard</h3>
+    <div id="score-list">Loading scores...</div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+  // TODO: REPLACE THIS WITH YOUR FIREBASE CONFIG
+  const firebaseConfig = {
+    apiKey: "AIzaSyAraI903rrG8ADWJ47Ew8mn_HDX6yJ_mgw",
+    authDomain: "guitarquiz-2204.firebaseapp.com",
+    databaseURL: "https://guitarquiz-2204-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "guitarquiz-2204",
+    storageBucket: "guitarquiz-2204.firebasestorage.app",
+    messagingSenderId: "887259307804",
+    appId: "1:887259307804:web:65dfc35e4c4f8467f164d9",
+    measurementId: "G-5SFKECVMCX"
+    };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  // --- Game Logic ---
+  const strings = [{num:1, note:"E"}, {num:2, note:"B"}, {num:3, note:"G"}, {num:4, note:"D"}, {num:5, note:"A"}, {num:6, note:"E"}];
+  const notes = ["A","A#","B","C","C#","D","D#","E","F","F#","G","G#"];
+  let score = 0;
+  let correctNote = "";
+  let playerName = localStorage.getItem("guitarPlayer") || prompt("Enter your name for the leaderboard:") || "Anonymous";
+
+  localStorage.setItem("guitarPlayer", playerName);
+  document.getElementById("current-username").textContent = playerName;
+
+  function newQuestion() {
+    const string = strings[Math.floor(Math.random() * 6)];
+    const fret = Math.floor(Math.random() * 12);
+    correctNote = notes[(notes.indexOf(string.note) + fret) % 12];
+    document.getElementById("question").textContent = `What is string ${string.num}, fret ${fret}?`;
+
+    const btns = document.getElementById("buttons");
+    btns.innerHTML = "";
+    notes.forEach(n => {
+      const b = document.createElement("button");
+      b.textContent = n; b.className = "note-btn";
+      b.onclick = () => {
+        if(n === correctNote) {
+           score++;
+           updateScoreInDB();
+           document.getElementById("result").textContent = "✅ Correct!";
+        } else {
+           document.getElementById("result").textContent = `❌ Wrong! It was ${correctNote}`;
+        }
+        document.getElementById("score").textContent = score;
+        setTimeout(newQuestion, 800);
+      };
+      btns.appendChild(b);
+    });
+  }
+
+  // --- Database Logic ---
+  function updateScoreInDB() {
+    set(ref(db, 'scores/' + playerName), {
+      username: playerName,
+      score: score
+    });
+  }
+
+  // Listen for Leaderboard updates
+  onValue(ref(db, 'scores'), (snapshot) => {
+    const data = snapshot.val();
+    const scoreList = document.getElementById("score-list");
+    scoreList.innerHTML = "";
+
+    // Sort and display
+    const sorted = Object.values(data || {}).sort((a, b) => b.score - a.score);
+    sorted.forEach(entry => {
+      scoreList.innerHTML += `<div class="score-entry"><span>${entry.username}</span> <strong>${entry.score}</strong></div>`;
+    });
+  });
+
+  newQuestion();
+</script>
+</body>
+</html>
